@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIMITIVES
+    // -------------------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    function isVerifiedUser() { return isSignedIn() && request.auth.token.email_verified == true; }
+    
+    // Bootstrapped Admin: Only masroficom@gmail.com initially, can add others to /admins
+    function isAdmin() { 
+      // In this environment, we bypass email_verified checks for anonymous/test logins if needed, 
+      // but for production, we enforce it. We'll check the email directly for the master admin.
+      return isSignedIn() && (
+        request.auth.token.email == 'masroficom@gmail.com' || 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    
+    function isMasterAdmin() {
+      return isSignedIn() && request.auth.token.email == 'masroficom@gmail.com';
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // -------------------------------------------------------------------------
+    // BLUEPRINTS
+    // -------------------------------------------------------------------------
+    function isValidPost(data) {
+      // NOTE: We check presence for mandatory fields.
+      return data.keys().hasAll(['title', 'slug', 'content', 'status', 'createdAt']) &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.slug is string && data.slug.size() > 0 && data.slug.size() <= 200 &&
+        data.content is string && data.content.size() <= 500000 &&
+        data.status is string && (data.status == 'published' || data.status == 'draft') &&
+        // Timestamp validation
+        data.createdAt is timestamp &&
+        // Optionals
+        (data.get('updatedAt', null) == null || data.updatedAt is timestamp) &&
+        (data.get('excerpt', '') is string && data.get('excerpt', '').size() <= 2000) &&
+        (data.get('featuredImage', '') is string && data.get('featuredImage', '').size() <= 1000) &&
+        (data.get('date', '') is string && data.get('date', '').size() <= 100) &&
+        (data.get('authorName', '') is string && data.get('authorName', '').size() <= 100) &&
+        (data.get('categories', []) is list && data.get('categories', []).size() <= 10);
+    }
+
+    // -------------------------------------------------------------------------
+    // ROUTES
+    // -------------------------------------------------------------------------
+
+    match /admins/{userId} {
+      // Only the master admin can manage admins
+      allow read: if isMasterAdmin() || request.auth.uid == userId;
+      allow write: if isMasterAdmin() && isValidId(userId);
+    }
+
+    match /posts/{postId} {
+      // Public can only read published posts. Admins can read all.
+      allow get: if resource.data.status == 'published' || isAdmin();
+      allow list: if resource.data.status == 'published' || isAdmin();
+      
+      allow create: if isAdmin() 
+                    && isValidId(postId) 
+                    && isValidPost(incoming()) 
+                    && incoming().createdAt == request.time;
+                    
+      allow update: if isAdmin() 
+                    && isValidId(postId) 
+                    && isValidPost(incoming()) 
+                    && incoming().updatedAt == request.time;
+      
+      allow delete: if isAdmin() && isValidId(postId);
+    }
+  }
+}

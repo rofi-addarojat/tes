@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "Post": {
+      "title": "Post",
+      "description": "A blog post or article",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "featuredImage": { "type": "string" },
+        "date": { "type": "string" },
+        "authorName": { "type": "string" },
+        "categories": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["published", "draft"] },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["title", "slug", "content", "status", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "An admin user who can manage content",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Blog posts for the landing page"
+    },
+    "/admins/{userId}": {
+      "schema": "Admin",
+      "description": "Authorized administrators"
+    }
+  }
+}
